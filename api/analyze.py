@@ -13,12 +13,33 @@ import requests
 
 # IMPORTANT: Model and asset paths are relative to the root of the project,
 # not the /api directory. Vercel copies these files to the right place during deployment.
-MODEL_PATH = 'Best_RandomForest.pkl'
+
+# --- Vercel Serverless Function Configuration ---
+
+# The URL to the model file you uploaded to Vercel Blob.
+MODEL_URL = 'https://xoovxnevsjz7urwn.public.blob.vercel-storage.com/Best_RandomForest-YWmWWMCeUhtBobUMwz7sJnW0tCEH2v.pkl'
+
+# The path to the landmarker task file, which is still bundled with the function.
 LANDMARKER_PATH = 'face_landmarker_v2_with_blendshapes.task'
+
+# Vercel provides a writable /tmp directory for serverless functions.
+# We will download and store our model here.
+LOCAL_MODEL_PATH = '/tmp/Best_RandomForest.pkl'
+
 
 # --- Mediapipe and Model Initialization ---
 # This part runs only once when the serverless function is "cold started".
+# It downloads the large model file if it doesn't already exist in /tmp.
 try:
+    # Download the model if it's not already in the /tmp directory
+    if not os.path.exists(LOCAL_MODEL_PATH):
+        print(f"Model not found locally. Downloading from {MODEL_URL}...")
+        response = requests.get(MODEL_URL)
+        response.raise_for_status()  # Ensure the download was successful
+        with open(LOCAL_MODEL_PATH, 'wb') as f:
+            f.write(response.content)
+        print("Model downloaded and saved successfully.")
+
     base_options = python.BaseOptions(model_asset_path=LANDMARKER_PATH)
     options = vision.FaceLandmarkerOptions(base_options=base_options,
                                            output_face_blendshapes=True,
@@ -26,8 +47,10 @@ try:
                                            num_faces=1)
     face_landmarker = vision.FaceLandmarker.create_from_options(options)
 
-    with open(MODEL_PATH, 'rb') as f:
+    # Load the model from the local path in /tmp
+    with open(LOCAL_MODEL_PATH, 'rb') as f:
         face_shape_model = pickle.load(f)
+
 except Exception as e:
     # If initialization fails, we'll have a global error object
     # to return useful debug information.
